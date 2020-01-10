@@ -1,0 +1,141 @@
+defaults: &defaults
+  working_directory: ~/repo
+  docker:
+  - image: circleci/node:12.1
+
+version: 2
+jobs:
+  checkout_code:
+    <<: *defaults
+    steps:
+      - checkout
+      - persist_to_workspace:
+          root: ~/repo
+          paths: .
+
+  bundle_dependencies:
+    <<: *defaults
+
+    steps:
+      - attach_workspace:
+          at: ~/repo
+      # Download and cache dependencies
+      - restore_cache:
+          keys:
+          - dependencies-{{ checksum "package.json" }}-{{ .Environment.CACHE_VERSION }}
+          # fallback to using the latest cache if no exact match is found
+          - dependencies-{{ .Environment.CACHE_VERSION }}
+      - run: npm install
+      - save_cache:
+          paths:
+          - node_modules
+          key: dependencies-{{ checksum "package.json" }}-{{ .Environment.CACHE_VERSION }}
+
+  build:
+    <<: *defaults
+
+    steps:
+      - attach_workspace:
+          at: ~/repo
+      - restore_cache:
+          keys:
+          - dependencies-{{ checksum "package.json" }}-{{ .Environment.CACHE_VERSION }}
+          # fallback to using the latest cache if no exact match is found
+          - dependencies-{{ .Environment.CACHE_VERSION }}
+
+      - run: npm run build
+
+      - persist_to_workspace:
+          root: ./
+          paths:
+          - .next
+
+
+  test:
+    <<: *defaults
+
+    steps:
+      - attach_workspace:
+          at: ~/repo
+      # Download and cache dependencies
+      - restore_cache:
+          keys:
+          - dependencies-{{ checksum "package.json" }}-{{ .Environment.CACHE_VERSION }}
+          # fallback to using the latest cache if no exact match is found
+          - dependencies-{{ .Environment.CACHE_VERSION }}
+
+      - run: npm run test
+
+  release:
+    <<: *defaults
+    steps:
+      - attach_workspace:
+          at: ~/repo
+      # Download and cache dependencies
+      - restore_cache:
+          keys:
+          - dependencies-{{ checksum "package.json" }}-{{ .Environment.CACHE_VERSION }}
+          # fallback to using the latest cache if no exact match is found
+          - dependencies-{{ .Environment.CACHE_VERSION }}
+
+      - run:
+          command: |
+            if [ ! -f ~/.ssh/known_hosts ]; then
+              mkdir ~/.ssh
+              touch ~/.ssh/known_hosts
+              ssh-keyscan github.com >> ~/.ssh/known_hosts
+            fi
+
+      - run: npx semantic-release
+
+  perf:
+    docker:
+    - image: circleci/node:12.1-browsers
+    working_directory: ~/repo
+    steps:
+    - attach_workspace:
+        at: ~/repo
+    - restore_cache:
+        keys:
+        - dependencies-{{ checksum "package.json" }}-{{ .Environment.CACHE_VERSION }}
+        # fallback to using the latest cache if no exact match is found
+        - dependencies-{{ .Environment.CACHE_VERSION }}
+    - run: sudo npm install -g @lhci/cli@0.3.x
+    - run:
+        name: lhci autorun
+        command: |
+          set -e
+          lhci autorun
+
+workflows:
+  version: 2
+  build-and-test:
+    jobs:
+    - checkout_code:
+        filters:
+          branches:
+            ignore: /develop|master/
+    - bundle_dependencies:
+        requires:
+        - checkout_code
+        filters:
+          branches:
+            ignore: /develop|master/
+    - test:
+        requires:
+        - bundle_dependencies
+        filters:
+          branches:
+            ignore: /develop|master/
+    - build:
+        requires:
+        - bundle_dependencies
+        filters:
+          branches:
+            ignore: /develop|master/
+    - perf:
+        requires:
+        - build
+        filters:
+          branches:
+            ignore: /develop|master/
