@@ -14,7 +14,7 @@
     },
     "assert": {
       "assertions": {
-        "categories:performance": ["error", {"minScore": 0.8}],
+        "categories:performance": ["error", {"minScore": 1.1}],
         "first-contentful-paint": ["error", {"maxNumericValue": 2000}],
         "interactive": ["error", {"maxNumericValue": 5200}],
         "speed-index": ["error", {"maxNumericValue": 4300}],
